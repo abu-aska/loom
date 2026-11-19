@@ -22,16 +22,17 @@ Behavioral rules trigger on shared high-frequency carrier tokens: whitespace, ma
 C^(t) = lambda_1 * K0 K0^T + sum_{i < t} K_i K_i^T
 ```
 
-Let `S_j` be the activation subspace required for adapter `j` to fire, and let `S_{<j}` be the span of previously preserved keys. Let `theta_min` be the smallest principal angle between `S_j` and `S_{<j}`. The fraction of adapter `j`'s intended update energy that survives orthogonal projection is upper-bounded by:
+Let `S_j = col(K_j_edit)` be the activation subspace required for adapter `j` to fire, and let `S_{<j}` be the span of previously preserved keys with orthogonal projector `P^(t-1)` onto `S_{<j}^perp`. Let `0 <= theta_min <= ... <= theta_max <= 90 deg` be the principal angles between `S_j` and `S_{<j}`.
+
+For any unit vector `v` in `S_j`, surviving key energy satisfies `sin^2(theta_min) <= ||P^(t-1) v||_2^2 <= sin^2(theta_max)`. Summing over all columns of `K_j_edit` yields the exact sandwich bound on the surviving key energy fraction `eta_j`:
 
 ```text
-eta_j = ||dW_j * P^(t-1) * K_j_edit||_F^2 / ||dW_j * K_j_edit||_F^2
-      <= 1 - cos^2(theta_min) = sin^2(theta_min)
+sin^2(theta_min) <= eta_j = ||P^(t-1) * K_j_edit||_F^2 / ||K_j_edit||_F^2 <= sin^2(theta_max)
 ```
 
-Two failure modes follow immediately (`verified` algebra):
+Along the maximally overlapping principal direction `u_1` in `S_j` (and across all of `S_j` for a rank-1 edit), surviving energy equals `sin^2(theta_min)` exactly. Two failure modes follow (`verified` algebra):
 
-- **High carrier overlap (`theta_min = 10 deg`):** At most `3.02 percent` (`0.030154`) of adapter `j`'s signal survives projection. Strict null-space projection silences the new adapter. Relaxing damping `lambda` to restore signal causes leakage `||dW_j K_i||_F` that degrades prior adapters.
+- **High carrier overlap (`theta_max <= 10 deg`, or along `u_1` when `theta_min = 10 deg`):** At most `3.02 percent` (`0.030154`) of the overlapping key signal survives orthogonal projection. Strict null-space projection silences those carrier directions. Relaxing damping `lambda` to restore signal causes leakage `||dW_j K_i||_F` that degrades prior adapters.
 - **Disjoint expansion (`theta_min` near `90 deg`):** Stacking `T` packs of effective rank `rho_i` linearly consumes the residual dimension `m_eff(t) = d_in - rank_tau(C^(t))`, eventually exhausting capacity.
 
 ### 1.2 Multi-Layer Nonlinear Drift Amplification
@@ -71,7 +72,7 @@ When compiling specialist adapter `A_z` for zone `z`, the compiler builds its pr
 
 Raw unigram embedding edits (tied `embed_tokens` row shifts) cannot separate `prose` from `formal_proof` because both share punctuation and English tokens (`theta_min` near zero). In middle and upper transformer MLP layers, hidden states `h_l(x)` encode surrounding syntactic context (fenced proof blocks, Lean keywords, JS module headers, JSON keys).
 
-Raising the contextual principal angle from `10 deg` (unigram overlap) to `60 deg` (context-separated hidden states) raises the surviving signal ceiling from `3.02 percent` to `75.00 percent` (`verified`), making orthogonal compilation viable on contextual MLP projections (`hypothesis`, directly tested in `siliconcordat/weft` Experiment E1).
+Raising the minimum contextual principal angle `theta_min` from `10 deg` (unigram overlap) to `60 deg` (context-separated hidden states) raises the guaranteed surviving signal floor `sin^2(theta_min)` across all directions in `S_j` from `3.02 percent` to `75.00 percent` (`verified`), making orthogonal compilation viable on contextual MLP projections (`hypothesis`, directly tested in `siliconcordat/weft` Experiment E1).
 
 ### 2.2 Layer 4 Deterministic Zone-Scoped Scale Gating
 

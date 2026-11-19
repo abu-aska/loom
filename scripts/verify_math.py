@@ -83,14 +83,25 @@ class TestLoomMath(unittest.TestCase):
         self.assertAlmostEqual(p_surv_8, 0.9860601630, places=6)
 
     def test_doc03_subspace_signal_and_layer_drift(self):
-        # Preserved signal upper bound: 1 - cos^2(theta_min) = sin^2(theta_min)
-        # High carrier overlap: theta_min = 10 deg -> <= 3.02% signal survives
-        eta_10 = math.sin(math.radians(10.0)) ** 2
-        self.assertAlmostEqual(eta_10, 0.0301536896, places=6)
+        # Sandwich bound for unit vectors v in S_j projected onto S_{<j}^perp:
+        #   sin^2(theta_min) <= ||P v||_2^2 <= sin^2(theta_max)
+        # Verify on explicit 3D example: S_{<j} = span{e_1},
+        # S_j = span{u_1 = (cos 10, sin 10, 0), u_2 = (0, 0, 1)} -> theta_min=10 deg, theta_max=90 deg
+        t_min = math.radians(10.0)
+        u1 = (math.cos(t_min), math.sin(t_min), 0.0)
+        u2 = (0.0, 0.0, 1.0)
+        # Projecting onto S_{<j}^perp zeros the e_1 coordinate
+        surv_u1 = (u1[1] ** 2) + (u1[2] ** 2)
+        surv_u2 = (u2[1] ** 2) + (u2[2] ** 2)
+        self.assertAlmostEqual(surv_u1, math.sin(t_min) ** 2, places=12)
+        self.assertAlmostEqual(surv_u1, 0.0301536896, places=6)
+        self.assertAlmostEqual(surv_u2, 1.0, places=12)
+        self.assertLessEqual(math.sin(t_min) ** 2, surv_u1 + 1e-12)
+        self.assertLessEqual(surv_u1, surv_u2)
 
-        # Context-separated zone overlap: theta_min = 60 deg -> 75.00% signal survives
-        eta_60 = math.sin(math.radians(60.0)) ** 2
-        self.assertAlmostEqual(eta_60, 0.75, places=6)
+        # Guaranteed floor across ALL directions in S_j when theta_min = 60 deg: >= 75.00%
+        eta_floor_60 = math.sin(math.radians(60.0)) ** 2
+        self.assertAlmostEqual(eta_floor_60, 0.75, places=6)
 
         # Multi-layer drift amplification sum_{l=1..L} eps * kappa^(L-l)
         # L = 36 layers, per-layer eps = 1e-4, Lipschitz kappa = 1.05
@@ -217,6 +228,12 @@ class TestLoomMath(unittest.TestCase):
         # Conservative 1500 tok/s prefill (10.92 s) -> >277,000x faster
         self.assertGreater(prefill_ms_4b / restore_ms_27b, 277_000.0)
 
+        # 27B hybrid with larger 128x128 head state (4x): 48.00 MiB, 8 ckpts = 384 MiB (0.59%), 0.157 ms
+        snap_27b_128 = recurrent_snapshot_bytes_bf16(48, 32, 128)
+        self.assertAlmostEqual(snap_27b_128 / (1024 ** 2), 48.0, places=6)
+        self.assertAlmostEqual((8 * snap_27b_128) / (64 * (1024 ** 3)) * 100.0, 0.58594, places=4)
+        self.assertAlmostEqual((snap_27b_128 / 320e9) * 1e3, 0.15729, places=4)
+
     def test_doc04_thesis4_exact_radix_accumulator(self):
         # BF16 (1s, 8e, 7m): smallest subnormal = 2^(-126-7) = 2^(-133)
         # Smallest nonzero product = 2^(-266); max product = (2 - 2^-7)^2 * 2^254 < 2^256 (MSB 255)
@@ -227,13 +244,15 @@ class TestLoomMath(unittest.TestCase):
         self.assertEqual(prod_span, 522)
         self.assertLessEqual(prod_span + 64, 640)
 
-        # Block-scaled INT8 dot product over group G=128:
-        # max product 127*127 = 16129; * 128 = 2,064,512 < 2^21 (fits cleanly in INT32/INT64)
-        max_block_sum_i8 = 128 * (127 * 127)
-        self.assertEqual(max_block_sum_i8, 2_064_512)
+        # Full two's-complement signed INT8 [-128, 127] dot product over group G=128:
+        # max product (-128)*(-128) = 16384; * 128 = 2,097,152 = 2^21 (< 2^22, fits in INT32)
+        max_block_sum_i8 = 128 * ((-128) ** 2)
+        self.assertEqual(max_block_sum_i8, 2_097_152)
+        self.assertEqual(max_block_sum_i8, 1 << 21)
         self.assertLess(max_block_sum_i8, 1 << 22)
 
-        # Across N_groups = 2^20 blocks, max integer magnitude < 2^42 << 2^63 (signed INT64)
+        # Across N_groups = 2^20 blocks, max integer magnitude = 2^41 << 2^63 (signed INT64)
+        self.assertEqual(max_block_sum_i8 * (1 << 20), 1 << 41)
         self.assertLess(max_block_sum_i8 * (1 << 20), (1 << 63) - 1)
 
 

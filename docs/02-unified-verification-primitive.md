@@ -82,7 +82,7 @@ An oracle can still fail even when externally owned if its assertions are weak o
 
 ### Axiom 4: Two-Tier Lexicase Separation Without Safety Dilution
 
-Strict all-or-nothing gates prevent regression yet create zero-gradient cliffs on multi-step changes (`spliceware` `v3_evogenesis`: 0 of 107 single-step edits pass 2 of 4 anchors under a rigid 3-of-4 gate). Scalar averaging avoids cliffs yet lets a candidate hide a broken critical requirement behind high average scores.
+Strict all-or-nothing gates prevent regression yet create zero-gradient cliffs on multi-step changes (`spliceware` `v3_evogenesis`: 0 of 106 reachable single-step edits pass 2 of 4 anchors under a rigid 3-of-4 gate). Scalar averaging avoids cliffs yet lets a candidate hide a broken critical requirement behind high average scores.
 
 AG-VBC resolves both failures by separating **safety filtering** from **shuffled-order lexicase specialist retention**:
 

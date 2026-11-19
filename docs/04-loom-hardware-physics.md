@@ -93,7 +93,9 @@ Attach a **64-bit Adapter-Mask Capability Tag** (`tag = H_64(checkpoint_id || ac
 | Hybrid Model Profile | SSM Layers / Heads / State | One Snapshot Size (`BF16`) | `8` Tagged Checkpoints | Share of System Memory | Restore Time (DMA) | Speedup vs `16k` Re-Prefill |
 | --- | --- | --- | --- | --- | --- | --- |
 | **4B Hybrid (`8 GiB` @ `350 GB/s`)** | `24` layers, `16` heads, `64x64` | `3.00 MiB` (`3,145,728 B`) | `24.0 MiB` | `0.29 percent` | `0.009 ms` (`9 us`) | `> 1,200,000x` vs `10.92 s` |
-| **27B Hybrid (`64 GiB` @ `320 GB/s`)** | `48` layers, `32` heads, `64x64` | `12.00 MiB` (`12,582,912 B`) | `96.0 MiB` | `0.15 percent` | `0.039 ms` (`39 us`) | `> 277,000x` vs `10.92 s` (`1,500 tok/s` floor) |
+| **27B Hybrid (`64 GiB` @ `320 GB/s`)** | `48` layers, `32` heads, `64x64` (illustrative) | `12.00 MiB` (`12,582,912 B`) | `96.0 MiB` | `0.15 percent` | `0.039 ms` (`39 us`) | `> 277,000x` vs `10.92 s` (`1,500 tok/s` floor) |
+
+The `64x64` head state above is illustrative. Larger `128x128` recurrent head states scale 4x (`48.00 MiB` per 27B snapshot, `384.0 MiB` for `8` checkpoints, `0.59 percent` of `64 GiB`, restoring in `0.157 ms`), still well under `2 percent` of memory and sub-millisecond in latency (`verified`).
 
 ### Refutation Test and Kill Condition
 
@@ -113,7 +115,7 @@ Add a **Kulisch-Style Exact Fixed-Radix Accumulator** dedicated to the verificat
 ### Exact Bit-Width Arithmetic (`verified`)
 
 - **Full BF16 exact superaccumulator:** BF16 (`1` sign, `8` exponent, `7` mantissa bits) has smallest subnormal `2^-133`. The smallest nonzero product is `2^-266` and the largest product is strictly below `2^256` (MSB bit `255`), giving an exact product span of `522` bits. Adding `64` carry and sign guard bits yields `586` bits, which fits cleanly in a `640`-bit (`10 x 64-bit` word) accumulator with a single canonical round-to-nearest-even output stage.
-- **Compact block-scaled integer path (aligned with `siliquant`):** `siliquant` proved that groups of `G = 128` weights are optimal on `82` of `85` real matrices at 4.5 bits. For signed INT8 weights over `G = 128`, the worst-case block dot product is `128 * 127 * 127 = 2,064,512 < 2^22`, fitting in INT32. Summing across `2^20` blocks stays below `2^42 << 2^63`, enabling 100 percent associative, zero-drift INT64 accumulation on compact hardware.
+- **Compact block-scaled integer path (aligned with `siliquant`):** `siliquant` proved that groups of `G = 128` weights are optimal on `82` of `85` real matrices at 4.5 bits. For full two's-complement signed INT8 weights (`[-128, 127]`) over `G = 128`, the worst-case block dot product is `128 * (-128)^2 = 2,097,152 = 2^21` (`< 2^22`), fitting in INT32. Summing across `2^20` blocks reaches at most `2^41 << 2^63`, enabling 100 percent associative, zero-drift INT64 accumulation on compact hardware.
 
 ### Refutation Test and Kill Condition
 
