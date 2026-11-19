@@ -19,10 +19,19 @@ This repository holds research, mathematical proofs, roofline arithmetic, and an
 | Document | Topic | Status |
 | --- | --- | --- |
 | [`PLAN.md`](PLAN.md) | Research scope, six deep threads, and falsification standards | Active |
-| [`docs/01-frontier-evaluation.md`](docs/01-frontier-evaluation.md) | Cross-org frontier audit: publishable results, open threads, and confirmed dead ends | Planned (Step 2) |
-| [`docs/02-unified-verification-primitive.md`](docs/02-unified-verification-primitive.md) | Anti-Goodhart verifier-owned behavioral commitments across code and weights | Planned (Step 2) |
-| [`docs/03-zone-subspace-duality.md`](docs/03-zone-subspace-duality.md) | L5 syntax zones to L2 weight subspaces and cross-generation recompilable software | Planned (Step 2) |
-| [`docs/04-loom-hardware-physics.md`](docs/04-loom-hardware-physics.md) | Hardware verification units, fused multi-adapter datapaths, and tagged recurrent state | Planned (Step 2) |
+| [`docs/01-frontier-evaluation.md`](docs/01-frontier-evaluation.md) | Cross-org frontier audit: publishable results, open threads, and confirmed dead ends | Complete |
+| [`docs/02-unified-verification-primitive.md`](docs/02-unified-verification-primitive.md) | Anti-Goodhart verifier-owned behavioral commitments across code and weights | Complete |
+| [`docs/03-zone-subspace-duality.md`](docs/03-zone-subspace-duality.md) | L5 syntax zones to L2 weight subspaces and cross-generation recompilable software | Complete |
+| [`docs/04-loom-hardware-physics.md`](docs/04-loom-hardware-physics.md) | Hardware verification units, fused multi-adapter datapaths, and tagged recurrent state | Complete |
+| [`scripts/verify_math.py`](scripts/verify_math.py) | Standard-library `unittest` suite checking every bound and roofline table in `docs/` | Passing (7/7) |
+
+## Check the Math
+
+Run the deterministic verification suite with Python 3 (no external packages required):
+
+```bash
+python3 -m unittest -v scripts/verify_math.py
+```
 
 ## Evidence Discipline
 

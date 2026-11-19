@@ -106,9 +106,10 @@ class TestLoomMath(unittest.TestCase):
         total_macs_4b = macs_proj_4b * 72
         self.assertEqual(total_macs_4b, 1_509_949_440)  # 1.510 GMAC
 
-        # 64-MAC @ 1.0 GHz = 64 GMAC/s -> 23.59 ms
+        # 64-MAC @ 1.0 GHz = 64 GMAC/s -> 23.59 ms; 256 GMAC/s -> 5.90 ms
         latency_ms_4b = (total_macs_4b / 64e9) * 1e3
         self.assertAlmostEqual(latency_ms_4b, 23.59296, places=4)
+        self.assertAlmostEqual((total_macs_4b / 256e9) * 1e3, 5.89824, places=4)
 
         # Adapter F16 byte size for 72 projections (r=16, d=2560): 11.25 MiB
         bytes_4b = adapter_bytes_f16(72, 2560, 2560, 16)
@@ -116,6 +117,9 @@ class TestLoomMath(unittest.TestCase):
         self.assertAlmostEqual(bytes_4b / (1024 ** 2), 11.25, places=6)
 
         # 27B model: L=64, 2 projections/layer = 128, d=5120, r=32, k_c=256
+        bytes_27b = adapter_bytes_f16(128, 5120, 5120, 32)
+        self.assertEqual(bytes_27b, 83_886_080)
+        self.assertAlmostEqual(bytes_27b / (1024 ** 2), 80.0, places=6)
         macs_proj_27b = ive_macs_per_projection(5120, 5120, 32, 256)
         self.assertEqual(macs_proj_27b, 83_886_080)
         total_macs_27b = macs_proj_27b * 128
@@ -147,6 +151,9 @@ class TestLoomMath(unittest.TestCase):
         unfused_ms_4b = 3 * 72 * 8e-3
         self.assertAlmostEqual(unfused_ms_4b, 1.728, places=6)
         self.assertAlmostEqual((unfused_ms_4b / base_ms_4b) * 100.0, 26.8221, places=3)
+        q45_3_ms_4b = fused_stream_ms_4b * (4.5 / 16.0)
+        self.assertAlmostEqual(q45_3_ms_4b, 0.02844, places=4)
+        self.assertAlmostEqual((q45_3_ms_4b / base_ms_4b) * 100.0, 0.4414, places=3)
 
         # Case B: 27B Q4_K_M (15.24 GiB = 16.36382 GB) on M1 Max @ 320 GB/s sustained
         base_27b_bytes = int(15.24 * (1024 ** 3))
@@ -162,6 +169,12 @@ class TestLoomMath(unittest.TestCase):
         fused_3_ms_27b = (three_27b_bytes / bw_m1max) * 1e3
         self.assertAlmostEqual(fused_3_ms_27b, 2.98844, places=4)
         self.assertAlmostEqual((fused_3_ms_27b / base_ms_27b) * 100.0, 5.8440, places=3)
+        unfused_3_ms_27b = 3 * 448 * 8e-3
+        self.assertAlmostEqual(unfused_3_ms_27b, 10.752, places=6)
+        self.assertAlmostEqual((unfused_3_ms_27b / base_ms_27b) * 100.0, 21.0259, places=3)
+        q45_3_ms_27b = fused_3_ms_27b * (4.5 / 16.0)
+        self.assertAlmostEqual(q45_3_ms_27b, 0.84050, places=4)
+        self.assertAlmostEqual((q45_3_ms_27b / base_ms_27b) * 100.0, 1.6436, places=3)
 
         # 8 F16 r=32 adapters: 2432 MiB = 2.375 GiB -> 7.969 ms (+15.58%)
         eight_27b_bytes = 8 * one_27b_lora
@@ -201,6 +214,8 @@ class TestLoomMath(unittest.TestCase):
         self.assertAlmostEqual((8 * snap_27b) / (64 * (1024 ** 3)) * 100.0, 0.14648, places=4)
         restore_ms_27b = (snap_27b / 320e9) * 1e3
         self.assertAlmostEqual(restore_ms_27b, 0.03932, places=4)
+        # Conservative 1500 tok/s prefill (10.92 s) -> >277,000x faster
+        self.assertGreater(prefill_ms_4b / restore_ms_27b, 277_000.0)
 
     def test_doc04_thesis4_exact_radix_accumulator(self):
         # BF16 (1s, 8e, 7m): smallest subnormal = 2^(-126-7) = 2^(-133)
