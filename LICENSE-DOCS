@@ -1,0 +1,7 @@
+# Documentation License
+
+All documentation, theory notes, and diagrams in this repository are licensed under the Creative Commons Attribution 4.0 International License (CC BY 4.0).
+
+Full legal text: https://creativecommons.org/licenses/by/4.0/legalcode
+
+Code and verification scripts under `scripts/` are licensed under the Apache License, Version 2.0 (see `LICENSE`).
