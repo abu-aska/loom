@@ -108,7 +108,25 @@ Three immediate engineering takeaways follow directly from this table:
 
 1. **BF16 breaks float64 orthogonality by 13 orders of magnitude** (`5.6e-17` to `4.3e-4` at `N = 1`, reaching `1.33e-3` at `N = 6`). That confirms why `weft` must compute `FixedRadixCertificate` *after* BF16 quantization rather than on pre-quantization float64 matrices.
 2. **Uniform INT4 destroys null-space guarantees** (`5.10 percent` leakage at `N = 3`, `6.45 percent` at `N = 6`).
-3. **Asymmetric `INT8 A` + `INT4 B` is the practical sweet spot (`hypothesis` for real models):** Keeping `A_j` at INT8 (or BF16) while compressing `B_j` to 4-bit `siliquant` ball-cut quantization achieves `3.729e-3` leakage at `N = 6`, matching `int8_both` within `0.7 percent`, beating `int4_both` by `17.3x`, and cutting `B_j` memory bandwidth in half.
+3. **Asymmetric `INT8 A` + `INT4 B` is the practical sweet spot (`verified` on `TinyStories-1M`, `hypothesis` at 1.5B-8B scale):** Keeping `A_j` at INT8 (or F16) while compressing `B_j` to 4 bits achieves `3.729e-3` synthetic leakage at `N = 6`, matching `int8_both` within `0.7 percent`, beating `int4_both` by `17.3x`, and cutting `B_j` memory bandwidth in half.
+
+### 3.2b Real-Checkpoint Confirmation (`siliconcordat/weft` Experiment E4 on `TinyStories-1M`)
+
+The synthetic theorem above was tested live in `siliconcordat/weft` (`70a4e68`, Experiment E4) on real pretrained `roneneldan/TinyStories-1M` weights (`N = 3` sequential rank-4 adapters across 8 quantization regimes, all passing exact wire readback and 0-byte re-derivation):
+
+| Layer and Shape (`N = 3`) | Regime (`B / A`) | Bytes | `K0` Linear Leak | `K0` Top-1 Retained | Comparison to Uniform / Control |
+| --- | --- | ---: | ---: | ---: | --- |
+| `mlp.c_proj` (`64 x 256`) | `int4 / int8` | `3,552` | `0.029345` | `15/16` | `18.37x` lower leak vs `int4/int4` (`0.539110`), `18.18x` vs `int8/int4` (`0.533395`) |
+| `mlp.c_proj` (`64 x 256`) | `int8 / int8` | `3,936` | `0.028787` | `15/16` | `int4/int8` stays within `1.9%` of `int8/int8` leakage |
+| `mlp.c_proj` (`64 x 256`) | `int4 / f16` | `6,576` | `0.000605` | `16/16` | Beats `bf16/bf16` (`7,680 B`, `0.004471`, `15/16`) on every metric (`7.4x` lower leak) |
+| `mlp.c_fc` (`256 x 64`) | `int4 / int8` | `2,400` | `0.148809` | `n/a` | `20.03x` lower leak vs `int4/int4`, `19.80x` vs `int8/int4`, `39.0%` smaller than `int8/int8` |
+| `mlp.c_fc` (`256 x 64`) | `int4 / f16` | `3,120` | `0.003916` | `n/a` | `59.4%` smaller than `bf16/bf16` (`7,680 B`) with `12.4x` lower leakage (`0.048433`) |
+
+Three operational details emerged directly from E4:
+
+1. **Reversed control confirms causality (`verified`):** Flipping precision to `int8 / int4` (`B` INT8, `A` INT4) reproduces the full collapse (`0.533395` leakage, `6/16` retained on `mlp.c_proj`), confirming that right-factor error `E_A` alone drives leakage.
+2. **Post-quantization integer certificates catch collapse pre-load (`verified`):** On `mlp.c_proj`, `int4 / int4` spikes `FixedRadixCertificate` leakage energy by `325x` (`4.58e9` vs `1.41e7` for `int4 / int8`), rejecting bad packings before GPU load.
+3. **Honest 1M-scale boundary:** `TinyStories-1M` is a 1M-parameter narrative model whose `mlp.c_proj` column L2 norms are nearly flat (`1.21x` to `1.41x` max-to-mean across all 8 layers). Keeping top-10 weight-norm columns whole trims Layer-7 max logit drift only modestly (`4.1657` to `4.0039`, `12/16` top-1 unchanged), deferring loud-column gains to 1.5B-8B checkpoints.
 
 ### 3.3 Exact Integer-Lattice Kernel Projection and the Siegel Explosion Catch
 
@@ -127,8 +145,39 @@ In `scripts/verify_convergences.py`, over ternary integer keys `K_Z` in `{-1, 0,
 
 Furthermore, even when `A_Z * K_Z = 0` holds exactly on quantized keys `K_Z`, real floating-point activations `K_real = K_Z + Delta_K` still leak `Q(B_j) * A_Z * Delta_K` unless activations themselves quantize onto the same integer grid.
 
-## 4. Concrete Falsification Tests for Real Checkpoints
+## 4. Four Serendipitous Cross-Org Convergences
 
-1. **Test C1 (Asymmetric `INT8 A` + `INT4 B` on real 4B weights):** Compile 3 sequential `BetaEdit` adapters on a real 4B model (`siliconcordat/weft`) and compare `fp16_both`, `int4_both`, and `asym_int8A_int4B` on `100` private `K0` retention holdouts. Refuted if `asym_int8A_int4B` fails to cut `int4_both` KL drift by at least `3x`.
+Combining the full 103-repository public excavation ([`docs/06-unmerged-branch-excavation.md`](06-unmerged-branch-excavation.md)) with `weft` Experiment E4 exposes four non-obvious cross-organization convergences that reshape Layers 1 through 5.
+
+### 4.1 Seeded-Noise `K0` Covariance (`siliquant` PR 12 x `weft` E4)
+
+- **Upstream discovery (`source claim`):** `Moissanite-Labs/siliquant` PR 12 showed that random vocabulary tokens (zero real text read) recover `69%` to `96%` of real-text `imatrix` quantization gain across `Qwen2.5-1.5B`, `SmolLM2-1.7B`, and `Llama-3.2-1B`, beating real-text `Q4_K_M --imatrix` at strength `0.25`.
+- **Cross-layer confirmation (`verified` on `TinyStories-1M`):** Applied to Layer 2 null-space projection in `siliconcordat/weft` E4 (`70a4e68`), 64 random vocabulary token sequences recovered `83.9%` of real-text holdout `K0` leakage protection (`2.3822` naive to `1.1214` noise-only vs `0.8788` real text at matched trace, with a `9%` target-margin tax `+18.92` vs `+20.77`).
+- **Architectural payoff (`hypothesis` at 1.5B-8B):** Compiling `K0` covariance from a deterministic PRNG seed removes external calibration corpora entirely. That eliminates calibration-text copyright risk and makes Hard Veto 1 re-derivation 100 percent seed-reproducible from the checkpoint alone.
+
+### 4.2 Parametric Wire-Dialect Decoders (`tokenpage` PR 1 and PR 5 x `weft`)
+
+- **Upstream discovery (`source claim`):** `Moissanite-Labs/tokenpage` PR 1 measured that ABIOS uses `0.273x` to `0.277x` the tokens of compact JSON across 7 tokenizers. PR 5 then uncovered a structural bottleneck on `Qwen2.5-0.5B` and `1.5B`: internal hidden states linearly decode compact `glyph_g1` packets, yet unadapted readout accuracy collapses to `0.558` (`0.542` with a legend) vs `1.000` JSON and `0.892`/`0.917` ABIOS refs.
+- **Cross-layer synthesis (`hypothesis`):** Because the wire semantics are already linearly separable in residual hidden states, compact wire dialects do not require expensive base-model retraining. A tiny asymmetric `int4 / int8` readout adapter compiled in `weft` under seeded-noise `K0` protection and activated solely in the `condensed_json` CST zone can bridge the readout gap without touching prose quality.
+
+### 4.3 Irreducible OS + Static + 256-Bit TCB Law (`abios` PR 41 x `f0` PR 49 x `mission` PR 37)
+
+- **Three independent negative proofs (`verified` upstream):**
+  1. `Moissanite-Labs/abios` PR 41 (`Qwen2.5-3B`, 30 trials) showed prompt-level `CMD`/`DATA` envelopes failed completely against hidden peer injection (`obey_delete` went `29/30` plain to `30/30` with envelope, and `envelope_report` raised strict token leaks from `2/30` to `11/30`).
+  2. `Foundation-0/f0` PR 49 audited 159 verification scripts and proved bare Python `assert` statements silently vanish under `python3 -O`, allowing corrupted certificates to pass.
+  3. `Proven-Commons/mission` PR 37 and `ahrazzle/soko` recorded `181.0M` observed 64-bit hash memoization collisions across `141.1M` states.
+- **Combined TCB Law:** Prompt framing, runtime assertions, and 64-bit hash tables cannot replace OS-enforced isolation (`Landlock`, `bubblewrap`, zero `sudo` in `warp`), static verifier pokayoke audits (`mde guard --code-audit`), and canonical full-key or 256-bit cryptographic digests.
+
+### 4.4 Diversity-Preserving Selection Law (`scry` PR 1 x `weft-loom` x `docs/02` Theorem 2)
+
+- **Nucleus-sampling rare-intent extinction (`source claim`):** In `Moissanite-Labs/scry` PR 1 (Zipf(1.1) over 400 intents, 40 rare), `top_p = 1.0` with 10 percent real data retains about `10.8/40` rare intents through generation 50, while `top_p = 0.95` kills all `40/40` rare intents by generation 5.
+- **Rival twin-building failure (`source claim`):** `Moissanite-Labs/weft-loom` branch `bayan/vigilant-johnson-egs6w8` proved game-theoretically and on Gemini cells that rival twin scoring gives zero incentive to improve twin building (solo controls matched twins at `0.89-0.99`).
+- **Unified selection law (`verified` in Section 2.2):** Tail-truncating samplers, undeduplicated scalar pools (`dedup_pool=False` drops Regime 2 from `20/20` to `0/20`), and misaligned rival objectives destroy rare stepping stones before recombination. Preserving rare capabilities requires untrimmed proposal tails paired with behaviorally deduplicated, specialist-preserving lexicase selection behind external verifier anchors.
+
+## 5. Concrete Falsification Tests for Real Checkpoints
+
+1. **Test C1 (Asymmetric `INT8 A` + `INT4 B` at 1.5B-8B scale):** Confirmed at 1M scale in `siliconcordat/weft` E4 (`18.37x` to `20.03x` leakage reduction on `TinyStories-1M`). Next falsifier: compile 3 sequential `BetaEdit` adapters on a 4B to 8B instruct model and compare `f16/f16`, `int4/int4`, and `int4/int8` on `100` private `K0` holdouts. Refuted if `int4/int8` fails to cut `int4/int4` KL drift by at least `3x` or loud-column keeping fails to move 4B KL.
 2. **Test C2 (Single-manifest zero-drift audit across `mde`, `exo`, `warp`, `weft`):** Generate L5 zone tags, L4 scale maps, L3 canary masks, and L2 `y = 0` partitions from one shared `zones.json` file. Refuted if real multi-language repos exhibit `> 10 percent` mixed-zone single-token spans that break static zone routing.
-3. **Test C3 (Siegel feasibility regime):** Exact integer-lattice kernel packing is restricted strictly to low-bit (`<= 4-bit`) or sparse low-rank (`k / (d - k) <= 1/2`) preservation subspaces. Above that ratio, asymmetric `BF16/INT8 A` + `4.5-bit B` plus post-quantization `FixedRadixCertificate` is the sound path.
+3. **Test C3 (Siegel feasibility regime):** Exact integer-lattice kernel packing is restricted strictly to low-bit (`<= 4-bit`) or sparse low-rank (`k / (d - k) <= 1/2`) preservation subspaces. Above that ratio, asymmetric `F16/INT8 A` + `INT4 B` plus post-quantization `FixedRadixCertificate` is the sound path.
+4. **Test C4 (Seeded-Noise `K0` Marchenko-Pastur closure):** Sweep seeded random-vocab sample count `n_noise` from `32` to `2048` on real checkpoints against real-text `K0` and hybrid `noise + 16 register-scoped y = 0` anchors. Refuted if unseen `K0` holdout leakage fails to close within `5 percent` of real-text `K0` by `n_noise = 2048`.
+5. **Test C5 (Parametric wire-dialect readout adapter):** Compile a zone-scoped asymmetric `int4/int8` readout adapter targeting a compact wire dialect (`tokenpage` PR 5 regime) while preserving base text under seeded-noise `K0`. Refuted if readout accuracy fails to exceed `0.95` or base-text top-1 retention drops below `95 percent`.
