@@ -60,7 +60,7 @@ These six areas produce concrete methods, proofs, or empirical measurements that
 
 ## 2. High-Potential Uncharted Threads Worth Pulling
 
-Six deep threads connect these separate repositories into one coherent systems research program. Each thread is treated as a falsifiable research target rather than an assumed win:
+Seven deep threads connect these separate repositories into one coherent systems research program. Each thread is treated as a falsifiable research target rather than an assumed win:
 
 | Thread | Core Idea | Where Derived in `loom` | Primary Falsification Test |
 | --- | --- | --- | --- |
@@ -70,6 +70,7 @@ Six deep threads connect these separate repositories into one coherent systems r
 | **T4: Cross-Generation Recompilable Software** | Use causal failure logs (SIM) plus durable capability IDs to recompile durable rules and automatically retire obsolete model workarounds on base upgrades | `docs/03-zone-subspace-duality.md` | Upgrade test across two base checkpoints measuring automatic retirement rate |
 | **T5: L1 Hardware Physics From L2-L5 Walls** | Derive DMA-boundary integer certificate units, fused multi-adapter SGMV datapaths, tagged recurrent-state banks, and exact-radix accumulators | `docs/04-loom-hardware-physics.md` | Software Triton/Metal kernel and FPGA/Verilator roofline refutation tests |
 | **T6: External-Pinned Multi-Tier Selection** | Separate strict canonical safety promotion from shuffled-order lexicase stepping stones without diluting safety invariants | `docs/02-unified-verification-primitive.md` | Escape rate from discrete single-step cliffs with zero safety regression |
+| **T7: Three-Axis Latent Lattice Convergence** | Combine horizontal persistent Lattice streams (`arXiv:2611.21608`) with L2 `weft` adapters and L5 zones while defeating horizontal-to-KV-write poisoning and global `RMSNorm` bleed | [`docs/07-latent-lattice-convergence.md`](07-latent-lattice-convergence.md) | 3-domain shared-token composition, KV-only vs atomic rollback, and `< 5 us` SRAM bank checks |
 
 ### 2.1 Four Serendipitous Cross-Org Convergences
 
