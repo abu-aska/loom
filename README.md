@@ -23,14 +23,17 @@ This repository holds research, mathematical proofs, roofline arithmetic, and an
 | [`docs/02-unified-verification-primitive.md`](docs/02-unified-verification-primitive.md) | Anti-Goodhart verifier-owned behavioral commitments across code and weights | Complete |
 | [`docs/03-zone-subspace-duality.md`](docs/03-zone-subspace-duality.md) | L5 syntax zones to L2 weight subspaces and cross-generation recompilable software | Complete |
 | [`docs/04-loom-hardware-physics.md`](docs/04-loom-hardware-physics.md) | Hardware verification units, fused multi-adapter datapaths, and tagged recurrent state | Complete |
-| [`scripts/verify_math.py`](scripts/verify_math.py) | Standard-library `unittest` suite checking every bound and roofline table in `docs/` | Passing (7/7) |
+| [`docs/05-spliceware-algebra-and-convergences.md`](docs/05-spliceware-algebra-and-convergences.md) | Unified splice algebra, vertical zone compilation, continuous-discrete duality, and quantized orthogonal packing | Complete |
+| [`scripts/verify_math.py`](scripts/verify_math.py) | Standard-library `unittest` suite checking every bound and roofline table in `docs/01` through `docs/04` | Passing (7/7) |
+| [`scripts/verify_convergences.py`](scripts/verify_convergences.py) | Standard-library `unittest` and simulation suite checking `docs/05` (zone compiler, cliff duality, quantized packing) | Passing (3/3) |
 
 ## Check the Math
 
-Run the deterministic verification suite with Python 3 (no external packages required):
+Run both deterministic verification suites with Python 3 (no external packages required):
 
 ```bash
-python3 -m unittest -v scripts/verify_math.py
+python3 -B -m unittest -v scripts/verify_math.py scripts/verify_convergences.py
+python3 -B scripts/verify_convergences.py --report
 ```
 
 ## Evidence Discipline
