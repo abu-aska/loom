@@ -69,8 +69,8 @@ We test two distinct landscapes plus two explicit failure regimes (all arms exce
 
 ### 2.2 Ablation Findings and Failure Boundaries
 
-1. **Behavioral deduplication is mathematically required:** Before deduplicating the stepping-stone pool by unique anchor-pass vector (`pool_by_sig`, behavioral deduplication gate `G5.3`), redundant `[1,1,0,0]` deceptive generalists flooded the fixed-size pool and dropped Regime 2 solve rate from `20/20` to `2/20`.
-2. **Do not reinforce already-solved seam coordinates:** Reinforcing seam-group selection weights after solving one motif slowed Regime 1 from `253.2` to `427.6` evals by oversampling the solved seam. Bounded token priors paired with uniform seam coverage avoided lock-in.
+1. **Behavioral deduplication is mathematically required (`dedup_pool=False` ablation):** Removing behavioral-signature deduplication (`pool_by_sig`, Gate `G5.3`) lets redundant `[1,1,0,0]` deceptive generalists flood the 16-slot FIFO pool and drops Regime 2 solve rate from `20/20` (`714.5` evals) to `0/20` (`2000.0` evals).
+2. **Do not reinforce already-solved seam coordinates (`reinforce_groups=True` ablation):** Reinforcing seam-group selection weights after solving one motif slows Regime 1 from `253.2` to `369.9` evals (slower than uniform L5 seams at `280.1`) by oversampling the solved seam. Bounded token priors paired with uniform seam coverage avoid lock-in.
 3. **Strictly dominated intermediates remain unrecoverable:** If a true intermediate scores `[1,0,0,0]` while a deceptive trap scores `[1,1,0,0]`, the intermediate is strictly dominated on every visible anchor and even lexicase cannot distinguish it (`docs/02` Theorem 2 boundary).
 
 ## 3. Quantized Orthogonal Packing (`siliquant` x `weft` x `loom`)

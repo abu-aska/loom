@@ -148,7 +148,7 @@ STANDARD_ZONE_MANIFEST = {
 #   Motif A (positions 0,1) == (3, 5)  [solves visible anchors 0, 1]
 #   Motif B (positions 2,3) == (6, 2)  [solves visible anchors 2, 3]
 #   Generalization tail (positions 4,5) == (1, 7) [required by private holdouts!]
-# Shortcut trap: setting pos 0..3 == (7, 7, 7, 7) passes ALL 4 visible anchors
+# Shortcut trap: setting pos 0..1 == (7, 7) passes ALL 4 visible anchors
 #   (simulating visible-probe gaming) while failing 100% of private holdouts!
 # Seed starts at (0, 0, 0, 0, 1, 7):
 #   - Changing any SINGLE position among 0..3 yields 0/4 visible anchors (exact 2-step cliff!).
@@ -312,11 +312,15 @@ def run_coupled_continuous_lexicase(
     use_private_holdout: bool = True,
     needle_mode: bool = False,
     eval_override=None,
+    dedup_pool: bool = True,
+    reinforce_groups: bool = False,
 ) -> tuple[str, int]:
     """Coupled L2 continuous token log-weights + L5 structural seams + two-tier lexicase.
 
-    Continuous token logits per slot (6 x 8) learn motif values from lexicase stepping stones
-    without oversampling already-solved seam groups.
+    Uses strictly black-box credit assignment on the edited seam (p1, p2) with zero
+    access to benchmark constants. Optional ablation toggles:
+      - dedup_pool=False: fixed 16-slot FIFO pool without behavioral signature deduplication.
+      - reinforce_groups=True: reinforce seam-group logits after solving a motif.
     Returns (outcome, evals) where outcome in {"true_solve", "goodhart_hack", "timeout"}.
     """
     rng = random.Random(seed_val)
@@ -326,18 +330,26 @@ def run_coupled_continuous_lexicase(
         eval_fn = eval_needle_program if needle_mode else eval_discrete_program
     groups = [(0, 1), (2, 3), (4, 5)]
 
-    # Continuous parameters: token log-weights per slot (6 x 8)
+    # Continuous parameters: token log-weights per slot (6 x 8) and optional group logits (3)
     token_logits = [[0.0] * ALPHABET for _ in range(6)]
+    group_logits = [0.0, 0.0, 0.0]
 
-    # Behaviorally deduplicated stepping-stone pool (Gate G5.3: 1 representative per
-    # unique anchor pass signature so redundant traps cannot flood and evict specialists).
+    # Stepping-stone pool: behaviorally deduplicated by default (Gate G5.3)
     pool_by_sig: dict[tuple[int, ...], tuple[int, ...]] = {(0, 0, 0, 0): CLIFF_SEED}
+    raw_pool: list[tuple[tuple[int, ...], list[int]]] = [(CLIFF_SEED, [0, 0, 0, 0])]
+    seen_progs = {CLIFF_SEED}
 
     for step in range(1, budget + 1):
-        pool = [(prog, list(sig)) for sig, prog in pool_by_sig.items()]
+        if dedup_pool:
+            pool = [(prog, list(sig)) for sig, prog in pool_by_sig.items()]
+        else:
+            pool = raw_pool
         parent = _lexicase_select(rng, pool)
 
-        g_idx = rng.randrange(len(groups))
+        if reinforce_groups:
+            g_idx = _sample_categorical(rng, _softmax(group_logits))
+        else:
+            g_idx = rng.randrange(len(groups))
         p1, p2 = groups[g_idx]
 
         # Propose coordinated pair edit sampled from continuous slot distributions
@@ -361,19 +373,30 @@ def run_coupled_continuous_lexicase(
                 return ("true_solve" if ho == 1 else "goodhart_hack", step)
             if ho == 1:
                 return ("true_solve", step)
-            # Private holdout rejected a visible-only shortcut: penalize shortcut tokens!
-            for idx in range(len(SHORTCUT_TRAP)):
+            # Black-box credit assignment on private-holdout rejection: penalize edited seam only.
+            for idx in (p1, p2):
                 token_logits[idx][cand[idx]] -= 1.5
             continue
 
-        # Two-tier lexicase admission: deduplicate by behavioral signature (Gate G5.3)
-        # and only reinforce continuous token priors on novel non-zero specialist discoveries.
         sig = tuple(vis)
-        if sum(vis) > 0 and sig not in pool_by_sig:
-            pool_by_sig[sig] = cand
-            # Mild bounded reinforcement (prevents deceptive-trap lock-in)
-            token_logits[p1][cand[p1]] = min(1.5, token_logits[p1][cand[p1]] + 0.5)
-            token_logits[p2][cand[p2]] = min(1.5, token_logits[p2][cand[p2]] + 0.5)
+        if dedup_pool:
+            if sum(vis) > 0 and sig not in pool_by_sig:
+                pool_by_sig[sig] = cand
+                if reinforce_groups:
+                    group_logits[g_idx] += 0.6
+                token_logits[p1][cand[p1]] = min(1.5, token_logits[p1][cand[p1]] + 0.5)
+                token_logits[p2][cand[p2]] = min(1.5, token_logits[p2][cand[p2]] + 0.5)
+        else:
+            # Undeduplicated FIFO pool ablation: any unique program with >0 anchors enters
+            if sum(vis) > 0 and cand not in seen_progs:
+                seen_progs.add(cand)
+                raw_pool.append((cand, vis))
+                if len(raw_pool) > 16:
+                    raw_pool.pop(1)
+                if reinforce_groups:
+                    group_logits[g_idx] += 0.6
+                token_logits[p1][cand[p1]] = min(1.5, token_logits[p1][cand[p1]] + 0.5)
+                token_logits[p2][cand[p2]] = min(1.5, token_logits[p2][cand[p2]] + 0.5)
 
     return ("timeout", budget)
 
@@ -694,6 +717,25 @@ class TestConvergences(unittest.TestCase):
         self.assertLessEqual(dec_seam_solves, 4)
         self.assertGreaterEqual(dec_coupled_solves, 16)
 
+        # Scripted Ablations (verifying docs/05 Section 2.2 findings directly):
+        # (a) Removing behavioral deduplication (dedup_pool=False) degrades Regime 2 severely.
+        dec_nodedup = [
+            run_coupled_continuous_lexicase(
+                s, budget, use_private_holdout=True, eval_override=eval_deceptive_tradeoff_program, dedup_pool=False
+            )
+            for s in seeds
+        ]
+        dec_nodedup_solves = sum(1 for res, _ in dec_nodedup if res == "true_solve")
+        self.assertLess(dec_nodedup_solves, dec_coupled_solves)
+
+        # (b) Reinforcing already-solved seam groups slows Regime 1 vs uniform seam selection.
+        r1_grp = [
+            run_coupled_continuous_lexicase(s, budget, use_private_holdout=True, reinforce_groups=True)
+            for s in seeds
+        ]
+        mean_r1_grp = sum(e for _, e in r1_grp) / len(seeds)
+        self.assertGreater(mean_r1_grp, mean_coupled_evals)
+
         # Honest Failure Bound F1: Pure binary needle (0 stepping stones) defeats continuous priors
         needle_results = [
             run_coupled_continuous_lexicase(s, budget, use_private_holdout=True, needle_mode=True)
@@ -770,8 +812,12 @@ def print_report() -> None:
     print(f"Arm 3 (coupled+lex+holdout):  {sum(r=='true_solve' for r,_ in cl)}/20 solves, mean_evals={sum(e for _,e in cl)/20:.1f}")
     ds = [run_seam_grouped_uniform_scalar(s, 2000, eval_fn=eval_deceptive_tradeoff_program) for s in seeds]
     dc = [run_coupled_continuous_lexicase(s, 2000, True, False, eval_deceptive_tradeoff_program) for s in seeds]
+    dc_nd = [run_coupled_continuous_lexicase(s, 2000, True, False, eval_deceptive_tradeoff_program, dedup_pool=False) for s in seeds]
+    r1_rg = [run_coupled_continuous_lexicase(s, 2000, True, False, None, True, True) for s in seeds]
+    print(f"Regime 1 ablation (reinforce_groups):  {sum(r=='true_solve' for r,_ in r1_rg)}/20 solves, mean_evals={sum(e for _,e in r1_rg)/20:.1f}")
     print(f"Regime 2 (deceptive, L5 seams scalar): {sum(ok for ok,_ in ds)}/20 solves, mean_evals={sum(e for _,e in ds)/20:.1f}")
     print(f"Regime 2 (deceptive, coupled+lex):     {sum(r=='true_solve' for r,_ in dc)}/20 solves, mean_evals={sum(e for _,e in dc)/20:.1f}")
+    print(f"Regime 2 ablation (no dedup_pool):     {sum(r=='true_solve' for r,_ in dc_nd)}/20 solves, mean_evals={sum(e for _,e in dc_nd)/20:.1f}")
     print(f"Fail F1 (binary needle):      {sum(r=='true_solve' for r,_ in nd)}/20 solves, mean_evals={sum(e for _,e in nd)/20:.1f}")
     print(f"Fail F2 (no holdout):         {sum(r=='true_solve' for r,_ in nh)}/20 true, {sum(r=='goodhart_hack' for r,_ in nh)}/20 hacks")
 
@@ -780,8 +826,8 @@ def print_report() -> None:
     for name, vals in q["curves"].items():
         row = " ".join(f"{v:.3e}" for v in vals)
         print(f"  {name:18s}: {row}")
-    print(f"Exact integer kernel (sparse {-1,0,1} K_Z): dim={q['sparse_ker_dim']}, max_coeff={q['max_sparse_coeff']}, leak={q['exact_int_leak']}")
-    print(f"Siegel growth (dense INT8 d=16): k=4 max_coeff={q['siegel_max_k4']}, k=10 max_coeff={q['siegel_max_k10']}")
+    print(f"Exact integer kernel (sparse {{-1, 0, 1}} K_Z): dim={q['sparse_ker_dim']}, max_coeff={q['max_sparse_coeff']}, leak={q['exact_int_leak']}")
+    print(f"Siegel growth (dense [-8, 8] M=8, d=16): k=4 max_coeff={q['siegel_max_k4']}, k=10 max_coeff={q['siegel_max_k10']}")
 
 
 if __name__ == "__main__":
