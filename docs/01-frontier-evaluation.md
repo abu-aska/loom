@@ -21,7 +21,14 @@ These six areas produce concrete methods, proofs, or empirical measurements that
 - **Core result (`verified`):** [`ahrazzle/soko`](https://github.com/ahrazzle/soko) (`v0.4.0`) separates fast C++20 search from two zero-shared-code Python oracles (`PuzzleScriptOracle` and `FlatBitmaskOracle`) and runs exact-state bucketed A* (`CompactNode` full-state equality). On board `III-20`, it expanded 8,475,805 nodes in 30 seconds, caught 77,437 live 64-bit hash collisions, and verified 25,096,136 heuristic edges with zero violations.
 - **Anti-tautology AST auditing (`verified`):** [`Foundation-0/formal-claims-audit`](https://github.com/Foundation-0/formal-claims-audit) and `soko`'s `formal_audit_checkers` statically scan Python verifiers for optimistic constant-`True` flags, IEEE-754 float drift in exact checkers, vacuous stubs, and alpha-renamed copy-paste tautologies.
 - **Honest claim-tier typing (`verified`):** `soko_prove_floor` refuses to label an unwitnessed search bound `VERIFIED`, reporting `LOWER_BOUND_UNWITNESSED` and explicit `proof_scope` bounds instead.
-- **Boundary:** [`Proven-Commons/mission`](https://github.com/Proven-Commons/mission) has zero active named reviewers in `bar/reviewers.toml`, and `formal-claims-audit` holds zero published verdicts on `main` today.
+- **Main-branch gap:** On `main`, [`Proven-Commons/mission`](https://github.com/Proven-Commons/mission) has zero active reviewers in `bar/reviewers.toml`, and `formal-claims-audit` holds zero published verdicts.
+- **Unmerged fixes:** Open PRs already add dynamic independent maintainer checks (`mission` PR 25), repaired AST anti-tautology auditing and empty-directory fail-closed checks (`formal-claims-audit` PR 16, 17, 19), and a Lean 4 token-stream scanner (`Foundation-0/proven-commons` PR 9). Details sit in [`docs/06-unmerged-branch-excavation.md`](06-unmerged-branch-excavation.md).
+
+### 1.2b Certified Exact Mathematics and Circuit Lower Bounds (`Foundation-0` Open PRs and `silic0n`)
+
+- **Unmerged `Foundation-0` mathematics (`claimed` / `reproduced`, unrefereed):** Open review PRs add three 4-charge configurations with 11 equilibria vs Maxwell's bound of 9 (`point-charges` PR 22, `f0` PR 58 and PR 61) and an 11-vertex rigid graph with `2,288` of `2,288` real realizations raising the growth bound to `2.4116` (`rigid-realizations` PR 21).
+- **Combinatorics and coding tables (`claimed`, unrefereed):** Open PRs also add `238` proved OEIS recurrences plus a Square Law theorem (`finite-state-proofs` PR 5) and `2,418` improved linear-code entries over GF(7) to GF(9) from `122` exact Delsarte certificates (`gfq-codes` PR 19).
+- **Hardware circuits and multiplication bounds (`source claim`, Lean-checked where noted, unrefereed):** Public repositories linked from `Foundation-0/silic0n` report `o(N log N)` GF(2) Mobius/zeta XOR circuits (`ahrazzle/mobius-x1`), smaller Lean-proved `GF(2^m)` multipliers and AES S-boxes (`ahrazzle/gf2m-circuits`), and conditional `kappa > 2^-15` integer multiplication bounds (`ahrazzle/integer-mult-bounds`).
 
 ### 1.3 Compile-Do-Not-Edit Weight Governance (`Moissanite-Labs/MDE`, `Moissanite-Labs/ethos`)
 
